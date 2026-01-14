@@ -1,0 +1,13 @@
+colorama==0.4.6
+numpy==2.4.1
+pandas==2.3.3
+pyaes==1.6.1
+pyasn1==0.6.1
+python-dateutil==2.9.0.post0
+python-dotenv==1.2.1
+pytz==2025.2
+rsa==4.9.1
+six==1.17.0
+Telethon==1.42.0
+tqdm==4.67.1
+tzdata==2025.3
