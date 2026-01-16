@@ -4,6 +4,7 @@ with src as (
     message_id,
     channel_title,
     message_ts,
+    message_ts::date as message_date,
     message_text,
     views,
     forwards,
