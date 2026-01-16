@@ -20,6 +20,7 @@ debugpy==1.8.19
 decorator==5.2.1
 deepdiff==8.6.1
 executing==2.2.1
+greenlet==3.3.0
 idna==3.11
 importlib_metadata==8.7.1
 ipykernel==7.1.0
@@ -72,6 +73,7 @@ rsa==4.9.1
 setuptools==80.9.0
 six==1.17.0
 snowplow-tracker==1.1.0
+SQLAlchemy==2.0.45
 sqlparse==0.5.4
 stack-data==0.6.3
 Telethon==1.42.0
