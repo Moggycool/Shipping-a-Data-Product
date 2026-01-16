@@ -1,22 +1,42 @@
+# Environment & secrets
 .env
-.gitignore
+.env.local
+.venv/
+
+# Node / frontend
 node_modules/
 dist/
+
+# Editors & OS
 .vscode/
+.idea/
 .DS_Store
+
+# Logs & coverage
 coverage/
 npm-debug.log
 yarn-debug.log
 yarn-error.log
-.idea/
 *.log
+
+# Temp / swap
 *.swp
-*.session
 *.swo
-.venv/
+*.session
+
+# Python
 __pycache__/
 *.pyc
-.env.local
+
+# Data (local only)
 data/
-data/raw/
-data/processed/
+
+# dbt generated artifacts
+medical_warehouse/target/
+medical_warehouse/dbt_internal_packages/
+dbt_internal_packages/
+logs/
+
+# dbt local user configs (IMPORTANT)
+medical_warehouse/.user.yml
+medical_warehouse/profiles.yml
