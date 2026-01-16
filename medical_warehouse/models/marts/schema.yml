@@ -1,0 +1,131 @@
+version: 2
+
+models:
+  - name: dim_channels
+    description: "Channel dimension table (one row per Telegram channel) used to analyze message facts by channel attributes and aggregated engagement."
+    columns:
+      - name: channel_key
+        description: "Surrogate key for the channel (stable identifier used in facts)."
+        tests: [not_null, unique]
+
+      - name: channel_name
+        description: "Human-readable Telegram channel name/username."
+        tests: [not_null, unique]
+
+      - name: channel_type
+        description: "Business classification of the channel (e.g., Pharmaceutical, Cosmetics, Medical)."
+
+      - name: first_post_date
+        description: "Date of the first observed post for this channel."
+
+      - name: last_post_date
+        description: "Date of the most recent observed post for this channel."
+
+      - name: total_posts
+        description: "Total number of messages/posts observed for this channel."
+        tests: [not_null]
+
+      - name: avg_views
+        description: "Average views per message for this channel (based on available view counts)."
+
+  - name: dim_dates
+    description: "Date dimension table (one row per calendar date) used for time-based grouping, filtering, and reporting."
+    columns:
+      - name: date_key
+        description: "Integer date key in YYYYMMDD format."
+        tests: [not_null, unique]
+
+      - name: full_date
+        description: "Calendar date."
+        tests: [not_null, unique]
+
+      - name: day_of_week
+        description: "Day of week number (as defined in the model logic)."
+        tests: [not_null]
+
+      - name: day_name
+        description: "Day name (e.g., Monday)."
+        tests: [not_null]
+
+      - name: week_of_year
+        description: "Week number of the year."
+        tests: [not_null]
+
+      - name: month
+        description: "Month number (1-12)."
+        tests: [not_null]
+
+      - name: month_name
+        description: "Month name (e.g., January)."
+        tests: [not_null]
+
+      - name: quarter
+        description: "Quarter number (1-4)."
+        tests: [not_null]
+
+      - name: year
+        description: "Four-digit year."
+        tests: [not_null]
+
+      - name: is_weekend
+        description: "True if the date is Saturday/Sunday, else false."
+        tests: [not_null]
+
+  - name: fct_messages
+    description: "Message-level fact table (one row per Telegram message) linked to dim_channels and dim_dates for analytics."
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - channel_key
+              - message_id
+
+    columns:
+      - name: message_id
+        description: "Source message identifier from Telegram (unique within a channel)."
+        tests: [not_null]
+
+      - name: channel_key
+        description: "Foreign key to dim_channels."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_channels')
+                field: channel_key
+
+      - name: date_key
+        description: "Foreign key to dim_dates (YYYYMMDD)."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_dates')
+                field: date_key
+
+      - name: message_ts
+        description: "Timestamp when the message was posted (timezone-aware)."
+        tests: [not_null]
+
+      - name: message_text
+        description: "Cleaned message text content (may be null/empty for media-only posts)."
+
+      - name: message_length
+        description: "Character length of message_text (0 if empty depending on model logic)."
+        tests: [not_null]
+
+      - name: views
+        description: "Number of views recorded for the message."
+        tests: [not_null]
+
+      - name: forwards
+        description: "Number of forwards recorded for the message."
+        tests: [not_null]
+
+      - name: reply_count
+        description: "Number of replies/comments recorded for the message (if available)."
+        tests: [not_null]
+
+      - name: has_image
+        description: "True if the message includes an image/media payload, else false."
+        tests: [not_null]

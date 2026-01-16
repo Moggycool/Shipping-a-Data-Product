@@ -2,11 +2,55 @@ version: 2
 
 models:
   - name: stg_telegram_messages
-    description: "Staged Telegram messages from raw.telegram_messages"
+    description: "Staged Telegram messages from raw.telegram_messages. Applies typing/standardization and exposes raw attributes needed for downstream dimensional models."
     columns:
-      - name: channel_username
-        tests: [not_null]
+      - name: payload
+        description: "Original raw message payload stored as JSONB for traceability and access to nested attributes not modeled as typed columns."
+
       - name: message_id
+        description: "Telegram message identifier (unique within a channel)."
         tests: [not_null]
+
+      - name: forwards
+        description: "Number of times the message was forwarded (if provided by Telegram)."
+
+      - name: reply_count
+        description: "Number of replies/comments associated with the message (if available)."
+
+      - name: has_media
+        description: "True if the message contains any media attachment, else false."
+
+      - name: has_image
+        description: "True if the attached media is an image, else false."
+
+      - name: partition_date
+        description: "Date used for partitioning/organization of ingested data (as stored in raw.telegram_messages)."
+
+      - name: ingested_at
+        description: "Timestamp when the record was ingested into raw.telegram_messages."
+
       - name: message_ts
+        description: "Timestamp when the message was posted (timezone-aware)."
         tests: [not_null]
+
+      - name: views
+        description: "Number of views recorded for the message."
+
+      - name: channel_title
+        description: "Telegram channel display title captured at extraction time."
+
+      - name: channel_username
+        description: "Telegram channel username/handle identifying the source channel."
+        tests: [not_null]
+
+      - name: message_text
+        description: "Message text content (may be null/empty for media-only posts)."
+
+      - name: source_file
+        description: "Name/path of the source file or batch artifact that produced this record (lineage/debugging)."
+
+      - name: media_type
+        description: "Media type/category associated with the message (e.g., photo, video, document), if present."
+
+      - name: media_path
+        description: "Path/URI to the stored media file (if extracted and persisted)."

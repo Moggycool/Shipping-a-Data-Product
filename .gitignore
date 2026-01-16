@@ -40,3 +40,4 @@ logs/
 # dbt local user configs (IMPORTANT)
 medical_warehouse/.user.yml
 medical_warehouse/profiles.yml
+medical_warehouse/dbt_packages/
