@@ -1,0 +1,12 @@
+version: 2
+
+models:
+  - name: stg_telegram_messages
+    description: "Staged Telegram messages from raw.telegram_messages"
+    columns:
+      - name: channel_username
+        tests: [not_null]
+      - name: message_id
+        tests: [not_null]
+      - name: message_ts
+        tests: [not_null]
