@@ -1,0 +1,105 @@
+[
+    {
+        "channel": "lobelia4cosmetics",
+        "message_id": 40,
+        "date": "2021-10-28T13:45:09+00:00",
+        "text": "Price \nTelegram https://t.me/lobelia4cosmetics\nMsg👉 Lobelia pharmacy and cosmetics \n☎️ call 0911562031/0911587703\nAdress:- Infront of Bole Medhanialem high school \nOpen Monday - Monday from 8am until midnight ከሰኞ - እስከ ሰኞ  ከጧቱ 2:00 ስዓት - እስከ ምሽቱ 6:00 ሰዓት\n🏍🏍🏍 Delivery fee 50 birr - 150 birr",
+        "views": 4570,
+        "forwards": 5,
+        "media": {
+            "has_media": true,
+            "type": "MessageMediaWebPage",
+            "kind": "other"
+        },
+        "raw": {
+            "_": "Message",
+            "id": 40,
+            "peer_id": {
+                "_": "PeerChannel",
+                "channel_id": 1666492664
+            },
+            "date": "2021-10-28T13:45:09+00:00",
+            "message": "Price \nTelegram https://t.me/lobelia4cosmetics\nMsg👉 Lobelia pharmacy and cosmetics \n☎️ call 0911562031/0911587703\nAdress:- Infront of Bole Medhanialem high school \nOpen Monday - Monday from 8am until midnight ከሰኞ - እስከ ሰኞ  ከጧቱ 2:00 ስዓት - እስከ ምሽቱ 6:00 ሰዓት\n🏍🏍🏍 Delivery fee 50 birr - 150 birr",
+            "out": false,
+            "mentioned": false,
+            "media_unread": false,
+            "silent": true,
+            "post": true,
+            "from_scheduled": false,
+            "legacy": false,
+            "edit_hide": false,
+            "pinned": false,
+            "noforwards": false,
+            "invert_media": false,
+            "offline": false,
+            "video_processing_pending": false,
+            "paid_suggested_post_stars": false,
+            "paid_suggested_post_ton": false,
+            "from_id": null,
+            "from_boosts_applied": null,
+            "saved_peer_id": null,
+            "fwd_from": null,
+            "via_bot_id": null,
+            "via_business_bot_id": null,
+            "reply_to": null,
+            "media": {
+                "_": "MessageMediaWebPage",
+                "webpage": {
+                    "_": "WebPage",
+                    "id": 9170793120927882910,
+                    "url": "https://t.me/lobelia4cosmetics",
+                    "display_url": "t.me/lobelia4cosmetics",
+                    "hash": 0,
+                    "has_large_media": false,
+                    "video_cover_photo": false,
+                    "type": "telegram_channel",
+                    "site_name": "Telegram",
+                    "title": "Lobelia pharmacy and cosmetics",
+                    "description": "American and Canadian Genuine products",
+                    "photo": null,
+                    "embed_url": null,
+                    "embed_type": null,
+                    "embed_width": null,
+                    "embed_height": null,
+                    "duration": null,
+                    "author": null,
+                    "document": null,
+                    "cached_page": null,
+                    "attributes": []
+                },
+                "force_large_media": false,
+                "force_small_media": false,
+                "manual": false,
+                "safe": true
+            },
+            "reply_markup": null,
+            "entities": [
+                {
+                    "_": "MessageEntityUrl",
+                    "offset": 16,
+                    "length": 30
+                },
+                {
+                    "_": "MessageEntityPhone",
+                    "offset": 93,
+                    "length": 10
+                }
+            ],
+            "views": 4570,
+            "forwards": 5,
+            "replies": null,
+            "edit_date": null,
+            "post_author": null,
+            "grouped_id": null,
+            "reactions": null,
+            "restriction_reason": [],
+            "ttl_period": null,
+            "quick_reply_shortcut_id": null,
+            "effect": null,
+            "factcheck": null,
+            "report_delivery_until_date": null,
+            "paid_message_stars": null,
+            "suggested_post": null
+        }
+    }
+]
