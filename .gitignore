@@ -12,30 +12,36 @@ dist/
 .idea/
 .DS_Store
 
-# Logs & coverage
-coverage/
-npm-debug.log
-yarn-debug.log
-yarn-error.log
+
+# Logs (keep folder, ignore files)
 *.log
+!logs/.gitkeep
 
 # Temp / swap
 *.swp
 *.swo
 *.session
+*.session-journal
 
 # Python
 __pycache__/
 *.pyc
 
-# Data (local only)
-data/
+
+
+# Data: ignore raw, keep samples
+data/raw/
+data/raw/**
+!data/sample/
+!data/sample/**
+!data/.gitkeep
+!data/sample/.gitkeep
 
 # dbt generated artifacts
 medical_warehouse/target/
 medical_warehouse/dbt_internal_packages/
 dbt_internal_packages/
-logs/
+
 
 # dbt local user configs (IMPORTANT)
 medical_warehouse/.user.yml
