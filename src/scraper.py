@@ -1,4 +1,4 @@
-""" Telegram scraper module. """
+"""Telegram scraper module."""
 from __future__ import annotations
 
 import os
@@ -9,7 +9,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 import base64
 
 from dotenv import load_dotenv
@@ -44,6 +44,9 @@ MAX_MEDIA_PER_CHANNEL = int(os.getenv("MAX_MEDIA_PER_CHANNEL", "50"))
 PER_CHANNEL_TIMEOUT_SEC = int(os.getenv("PER_CHANNEL_TIMEOUT_SEC", "180"))
 FLOODWAIT_MAX_SLEEP_SEC = int(os.getenv("FLOODWAIT_MAX_SLEEP_SEC", "60"))
 
+RETRY_MAX_ATTEMPTS = int(os.getenv("RETRY_MAX_ATTEMPTS", "3"))
+RETRY_BASE_DELAY_SEC = float(os.getenv("RETRY_BASE_DELAY_SEC", "2.0"))
+
 
 # ============================================================
 # Logging (daily log file + console)
@@ -54,19 +57,19 @@ def setup_logging() -> logging.Logger:
     today = datetime.now(timezone.utc).date().isoformat()
     log_path = LOG_DIR / f"scrape_{today}.log"
 
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-    logger.handlers.clear()
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    root.handlers.clear()
 
     fmt = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
 
     fh = logging.FileHandler(log_path, encoding="utf-8")
     fh.setFormatter(fmt)
-    logger.addHandler(fh)
+    root.addHandler(fh)
 
     sh = logging.StreamHandler()
     sh.setFormatter(fmt)
-    logger.addHandler(sh)
+    root.addHandler(sh)
 
     return logging.getLogger("telegram_scraper")
 
@@ -108,12 +111,12 @@ def load_channels() -> List[str]:
     """Load the list of Telegram channels to scrape."""
     required = ["CheMed123", "lobelia4cosmetics",
                 "tikvahpharma", "rayapharmaceuticals"]
-    extra = []
+    extra: List[str] = []
 
     if CHANNELS_TXT.exists():
         extra = [
             normalize_channel(l)
-            for l in CHANNELS_TXT.read_text().splitlines()
+            for l in CHANNELS_TXT.read_text(encoding="utf-8").splitlines()
             if l and not l.startswith("#")
         ]
 
@@ -123,13 +126,14 @@ def load_channels() -> List[str]:
 def load_state() -> Dict[str, Any]:
     """Load state dict from the state JSON file."""
     if STATE_PATH.exists():
-        return json.loads(STATE_PATH.read_text())
+        return json.loads(STATE_PATH.read_text(encoding="utf-8"))
     return {"channels": {}}
 
 
 def save_state(state: Dict[str, Any]) -> None:
     """Save state dict to the state JSON file."""
-    STATE_PATH.write_text(json.dumps(state, indent=2, default=json_default))
+    STATE_PATH.write_text(json.dumps(
+        state, indent=2, default=json_default), encoding="utf-8")
 
 
 def get_last_message_id(state: Dict[str, Any], channel: str) -> int:
@@ -139,16 +143,13 @@ def get_last_message_id(state: Dict[str, Any], channel: str) -> int:
 
     if value is None:
         return 0
-
     if isinstance(value, int):
         return value
-
     if isinstance(value, str):
         try:
             return int(value)
         except ValueError:
             return 0
-
     if isinstance(value, dict):
         for key in ("last_message_id", "last_id", "lastMessageId"):
             if key in value:
@@ -157,7 +158,6 @@ def get_last_message_id(state: Dict[str, Any], channel: str) -> int:
                 except Exception:
                     return 0
         return 0
-
     return 0
 
 
@@ -169,6 +169,39 @@ def set_last_message_id(state: Dict[str, Any], channel: str, msg_id: int) -> Non
 def msg_day(dt: Optional[datetime]) -> str:
     """Get the ISO date string (YYYY-MM-DD) for a message datetime."""
     return (dt or datetime.now(timezone.utc)).date().isoformat()
+
+
+async def safe_sleep(seconds: int) -> None:
+    await asyncio.sleep(max(0, seconds))
+
+
+async def run_with_retries(coro_factory, *, label: str) -> Any:
+    """
+    Retries a coroutine factory with exponential backoff for transient errors.
+    coro_factory: callable returning an awaitable
+    """
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            return await coro_factory()
+        except FloodWaitError as e:
+            wait_s = int(getattr(e, "seconds", 0) or 0)
+            sleep_sec = min(
+                wait_s, FLOODWAIT_MAX_SLEEP_SEC) if wait_s > 0 else FLOODWAIT_MAX_SLEEP_SEC
+            logger.warning(
+                f"[{label}] FloodWaitError: sleeping {sleep_sec}s (attempt {attempt})")
+            await safe_sleep(sleep_sec)
+        except (RPCError, asyncio.TimeoutError, OSError) as e:
+            if attempt >= RETRY_MAX_ATTEMPTS:
+                logger.exception(
+                    f"[{label}] giving up after {attempt} attempts: {e}")
+                raise
+            delay = RETRY_BASE_DELAY_SEC * (2 ** (attempt - 1))
+            logger.warning(
+                f"[{label}] error={type(e).__name__} retrying in {delay:.1f}s (attempt {attempt})"
+            )
+            await safe_sleep(int(delay))
 
 
 # ============================================================
@@ -201,17 +234,67 @@ def append_to_csv(day: str, records: List[Dict[str, Any]]) -> None:
 
 
 # ============================================================
+# Media download
+# ============================================================
+async def maybe_download_media(client: TelegramClient, msg: Message, channel: str) -> Optional[str]:
+    """
+    Download media for a message if enabled.
+    Returns a relative path string (from PROJECT_ROOT) or None.
+    """
+    if not DOWNLOAD_MEDIA or not msg.media:
+        return None
+
+    channel_dir = IMAGES_DIR / channel
+    channel_dir.mkdir(parents=True, exist_ok=True)
+
+    out_base = channel_dir / f"{msg.id}"
+    try:
+        saved_path = await client.download_media(msg, file=str(out_base))
+        if not saved_path:
+            return None
+
+        # store relative path to keep portability across machines
+        try:
+            return str(Path(saved_path).resolve().relative_to(PROJECT_ROOT.resolve()))
+        except Exception:
+            return str(saved_path)
+    except Exception as e:
+        logger.warning(
+            f"Media download failed @{channel} msg_id={msg.id}: {type(e).__name__}: {e}")
+        return None
+
+
+# ============================================================
 # Message processing
 # ============================================================
 def msg_to_record(msg: Message, channel: str, media_path: Optional[str]) -> Dict[str, Any]:
-    """Convert a Telegram message to a dictionary record."""
+    """Convert a Telegram message to a dict record (loader-compatible + rubric aliases)."""
+    dt_iso = msg.date.astimezone(
+        timezone.utc).isoformat() if msg.date else None
+    text = msg.message or ""
+
+    views = int(getattr(msg, "views", 0) or 0)
+    forwards = int(getattr(msg, "forwards", 0) or 0)
+
+    # rubric-friendly alias names (do not break existing loader)
     return {
+        # === loader expects these ===
         "channel": f"@{channel}",
         "message_id": msg.id,
-        "date": msg.date.astimezone(timezone.utc).isoformat() if msg.date else None,
-        "text": msg.message,
+        "date": dt_iso,
+        "text": text,
         "has_media": bool(msg.media),
         "media_path": media_path,
+
+        # === rubric-friendly aliases ===
+        "channel_name": f"@{channel}",
+        "message_date": dt_iso,
+        "message_text": text,
+        "image_path": media_path,
+        "views": views,
+        "forwards": forwards,
+
+        # raw backup for lossless load
         "raw": msg.to_dict(),
     }
 
@@ -225,6 +308,7 @@ class ChannelResult:
     channel: str
     new_messages: int
     new_last_message_id: int
+    media_downloaded: int
 
 
 async def scrape_channel(client: TelegramClient, channel: str, last_id: int) -> ChannelResult:
@@ -235,14 +319,28 @@ async def scrape_channel(client: TelegramClient, channel: str, last_id: int) -> 
     records_by_day: Dict[str, List[Dict[str, Any]]] = {}
     new_last_id = last_id
 
+    media_downloaded = 0
+    seen_messages = 0
+
+    # NOTE: iter_messages yields newest -> oldest
     async for msg in client.iter_messages(channel, min_id=last_id):
-        if msg.date and msg.date < cutoff and last_id == 0:
+        seen_messages += 1
+        if seen_messages > MAX_MESSAGES_PER_CHANNEL:
             break
 
-        if msg.id > new_last_id:
+        if msg.date and msg.date < cutoff:
+            break
+
+        if msg.id and msg.id > new_last_id:
             new_last_id = msg.id
 
-        rec = msg_to_record(msg, channel, None)
+        media_path: Optional[str] = None
+        if DOWNLOAD_MEDIA and msg.media and media_downloaded < MAX_MEDIA_PER_CHANNEL:
+            media_path = await maybe_download_media(client, msg, channel)
+            if media_path:
+                media_downloaded += 1
+
+        rec = msg_to_record(msg, channel, media_path)
         records_by_day.setdefault(msg_day(msg.date), []).append(rec)
 
     for day, recs in records_by_day.items():
@@ -251,21 +349,40 @@ async def scrape_channel(client: TelegramClient, channel: str, last_id: int) -> 
         day_dir.mkdir(parents=True, exist_ok=True)
         fp = day_dir / f"{channel}.json"
 
-        existing = []
+        # FIX: correctly load existing
+        existing: List[Dict[str, Any]] = []
         if fp.exists():
-            eexisting = json.loads(fp.read_text(encoding="utf-8"))
+            existing = json.loads(fp.read_text(encoding="utf-8"))
 
-        merged = {r["message_id"]: r for r in existing}
+        merged: Dict[int, Dict[str, Any]] = {}
+        for r in existing:
+            mid = r.get("message_id")
+            if isinstance(mid, int):
+                merged[mid] = r
+            else:
+                try:
+                    merged[int(mid)] = r
+                except Exception:
+                    continue
+
         for r in recs:
-            merged[r["message_id"]] = r
+            merged[int(r["message_id"])] = r
 
-        fp.write_text(json.dumps(list(merged.values()),
-                      indent=2, default=json_default))
+        fp.write_text(
+            json.dumps(list(merged.values()), indent=2, default=json_default),
+            encoding="utf-8",
+        )
 
         # CSV backup
         append_to_csv(day, recs)
 
-    return ChannelResult(channel, sum(len(v) for v in records_by_day.values()), new_last_id)
+    new_messages = sum(len(v) for v in records_by_day.values())
+    return ChannelResult(
+        channel=channel,
+        new_messages=new_messages,
+        new_last_message_id=new_last_id,
+        media_downloaded=media_downloaded,
+    )
 
 
 # ============================================================
@@ -285,19 +402,44 @@ async def main() -> None:
             "Missing TELEGRAM_API_ID or TELEGRAM_API_HASH in .env")
 
     api_id = int(api_id_raw)
-
     session_name = os.getenv("TELEGRAM_SESSION_NAME", "telegram_scraper")
 
     channels = load_channels()
     state = load_state()
 
+    logger.info(
+        f"Config: channels={len(channels)} lookback_days={LOOKBACK_DAYS} "
+        f"max_messages_per_channel={MAX_MESSAGES_PER_CHANNEL} download_media={DOWNLOAD_MEDIA} "
+        f"max_media_per_channel={MAX_MEDIA_PER_CHANNEL} per_channel_timeout={PER_CHANNEL_TIMEOUT_SEC}s"
+    )
+
     async with TelegramClient(session_name, api_id, api_hash) as client:
         for ch in channels:
             last_id = get_last_message_id(state, ch)
-            result = await scrape_channel(client, ch, last_id)
-            if result.new_last_message_id > last_id:
-                set_last_message_id(state, ch, result.new_last_message_id)
-                save_state(state)
+
+            try:
+                async def _do():
+                    return await asyncio.wait_for(
+                        scrape_channel(client, ch, last_id),
+                        timeout=PER_CHANNEL_TIMEOUT_SEC,
+                    )
+
+                result: ChannelResult = await run_with_retries(_do, label=f"channel @{ch}")
+
+                logger.info(
+                    f"Done @{ch}: new_messages={result.new_messages} "
+                    f"media_downloaded={result.media_downloaded} new_last_id={result.new_last_message_id}"
+                )
+
+                if result.new_last_message_id > last_id:
+                    set_last_message_id(state, ch, result.new_last_message_id)
+                    save_state(state)
+
+            except Exception as e:
+                # log-and-continue so one channel doesn't kill the job
+                logger.exception(
+                    f"Failed channel @{ch} (continuing): {type(e).__name__}: {e}")
+                continue
 
     logger.info("=== Scraping complete ===")
 
