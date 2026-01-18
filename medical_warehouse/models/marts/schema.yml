@@ -129,3 +129,20 @@ models:
       - name: has_image
         description: "True if the message includes an image/media payload, else false."
         tests: [not_null]
+
+  - name: fct_image_detections
+    columns:
+      - name: message_id
+        tests: [not_null]
+
+      - name: image_category
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - promotional
+                  - product_display
+                  - lifestyle
+                  - other
+                quote: true

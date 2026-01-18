@@ -23,3 +23,6 @@ models:
     marts:
       +schema: analytics
       +materialized: table
+seeds:
+  medical_warehouse:
+    +schema: raw
