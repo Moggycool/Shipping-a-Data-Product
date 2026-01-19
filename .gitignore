@@ -32,6 +32,8 @@ __pycache__/
 # Data: ignore raw, keep samples
 data/raw/
 data/raw/**
+data/processed/yolo/detections.csv
+
 !data/sample/
 !data/sample/**
 !data/.gitkeep
