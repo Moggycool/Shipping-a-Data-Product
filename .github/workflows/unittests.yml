@@ -41,7 +41,7 @@ jobs:
 
     dbt:
         name: dbt compile/build/test
-        runs-on: windows-latest
+        runs-on: ubuntu-latest
 
         services:
             postgres:
