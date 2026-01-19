@@ -1,18 +1,115 @@
+name: CI
+
 on: [push, pull_request]
+
+concurrency:
+    group: ci-${{ github.ref }}
+    cancel-in-progress: true
 
 jobs:
     unittests:
+        name: Unit tests + API import checks
         runs-on: ubuntu-latest
+
         steps:
             - uses: actions/checkout@v4
+
             - name: Set up Python
-              uses: actions/setup-python@v4
+              uses: actions/setup-python@v5
               with:
-                  python-version: "3.x"
+                  python-version: "3.11"
+                  cache: "pip"
+
             - name: Install dependencies
               run: |
                   python -m pip install --upgrade pip
                   if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+            - name: Basic API import checks
+              env:
+                  PYTHONPATH: .
+              run: |
+                  python -c "import sys; print(sys.version)"
+                  python -c "import api"
+                  python -c "from api.main import app"
+
             - name: Run tests
+              env:
+                  PYTHONPATH: .
               run: |
                   pytest -q --tb=short
+
+    dbt:
+        name: dbt compile/build/test
+        runs-on: ubuntu-latest
+
+        services:
+            postgres:
+                image: postgres:15
+                env:
+                    POSTGRES_USER: postgres
+                    POSTGRES_PASSWORD: postgres
+                    POSTGRES_DB: medical_warehouse
+                ports:
+                    - 5432:5432
+                options: >-
+                    --health-cmd="pg_isready -U postgres"
+                    --health-interval=10s
+                    --health-timeout=5s
+                    --health-retries=5
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.11"
+                  cache: "pip"
+
+            - name: Install dependencies (incl. dbt)
+              run: |
+                  python -m pip install --upgrade pip
+                  if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+                  pip show dbt-core || pip install dbt-core dbt-postgres
+
+            - name: Create dbt profiles.yml (CI)
+              run: |
+                  mkdir -p ~/.dbt
+                  cat > ~/.dbt/profiles.yml << 'YAML'
+                  medical_warehouse:
+                    target: ci
+                    outputs:
+                      ci:
+                        type: postgres
+                        host: 127.0.0.1
+                        user: postgres
+                        password: postgres
+                        port: 5432
+                        dbname: medical_warehouse
+                        schema: public
+                        threads: 4
+                  YAML
+
+            - name: dbt deps
+              working-directory: medical_warehouse
+              run: dbt deps
+
+            - name: dbt debug
+              working-directory: medical_warehouse
+              run: dbt debug --target ci
+
+            - name: dbt compile
+              working-directory: medical_warehouse
+              run: dbt compile --target ci
+
+            # NOTE: build/test require your raw/source tables (or seeds) to exist in CI.
+            # If CI fails here due to missing sources, switch to `dbt build --select ...`
+            # or add seeds/fixtures for CI.
+            - name: dbt build
+              working-directory: medical_warehouse
+              run: dbt build --target ci
+
+            - name: dbt test
+              working-directory: medical_warehouse
+              run: dbt test --target ci
