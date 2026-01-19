@@ -1,57 +1,83 @@
-# Shipping a Data Product — Telegram ELT Pipeline (Telethon + PostgreSQL + dbt)
+# Shipping a Data Product: From Raw Telegram Data to an Analytical API
 
-This project implements an end-to-end ELT pipeline that:
+End-to-end data pipeline for Ethiopian medical/business intelligence using **Telethon** (Extract), **PostgreSQL** (Load), **dbt** (Transform + Tests), **YOLOv8** (Enrichment), **FastAPI** (Analytics API), and **Dagster** (Orchestration).
 
-1) Scrapes messages from selected Telegram channels using **Telethon**
-2) Stores raw data in a local **data lake** (JSON partitions + downloaded images)
-3) Loads raw JSON into **PostgreSQL** (raw schema)
-4) Transforms data into an analytics-ready **star schema** using **dbt** with tests and custom data quality checks
-
----
-
-## Contents
-
-- [Architecture](#architecture)
-- [Project Structure](#project-structure)
-- [Data Lake Layout](#data-lake-layout)
-- [Setup](#setup)
-- [Environment Variables](#environment-variables)
-- [How to Run (End-to-End)](#how-to-run-end-to-end)
-- [dbt Models](#dbt-models)
-- [Data Quality (dbt Tests)](#data-quality-dbt-tests)
-- [Operational Notes (Logging, Retries, Resume)](#operational-notes-logging-retries-resume)
-- [API (Optional)](#api-optional)
+> **Week 8 Challenge (10 Academy):** Shipping a Data Product — 14 Jan to 20 Jan 2026  
+> **Data domain:** public Telegram medical/pharma-related channels  
+> **Pattern:** ELT (raw-first, schema-on-read + curated marts)
 
 ---
 
-## Architecture
+## Table of Contents
 
-**Extract (Telethon)**  
-Telegram Channels → `src/scraper.py` → `data/raw/telegram_messages/...` + `data/raw/images/...`
-
-**Load (Python)**  
-Raw JSON → `src/load_raw_to_postgres.py` → PostgreSQL `raw` schema tables
-
-**Transform (dbt)**  
-`raw` → `staging` → `analytics` (marts star schema)
-
-**Quality**  
-dbt generic tests + custom SQL tests in `medical_warehouse/tests/`
+- [1. Architecture (Task 1–5)](#1-architecture-task-15)
+- [2. Repository Structure](#2-repository-structure)
+- [3. Task 1 — Telegram Scraping & Raw Data Lake](#3-task-1--telegram-scraping--raw-data-lake)
+- [4. Task 2 — Load to PostgreSQL + dbt Modeling & Tests](#4-task-2--load-to-postgresql--dbt-modeling--tests)
+- [5. Task 3 — YOLOv8 Enrichment (Object Detection)](#5-task-3--yolov8-enrichment-object-detection)
+- [6. Task 4 — FastAPI Analytical API](#6-task-4--fastapi-analytical-api)
+- [7. Task 5 — Dagster Orchestration (Daily Schedule)](#7-task-5--dagster-orchestration-daily-schedule)
+- [8. Setup & Configuration](#8-setup--configuration)
+- [9. How to Run End-to-End](#9-how-to-run-end-to-end)
+- [10. Data Quality & Observability](#10-data-quality--observability)
+- [11. Screenshots / Evidence for Submission](#11-screenshots--evidence-for-submission)
+- [12. Troubleshooting](#12-troubleshooting)
 
 ---
 
-## Project Structure
+## 1. Architecture (Task 1–5)
+
+**Extract (Task 1)**
+
+- Telegram channels → `src/scraper.py` (Telethon)
+- Writes partitioned JSON + downloads images to the raw data lake
+
+**Load (Task 2)**
+
+- Raw JSON partitions → `src/load_raw_to_postgres.py`
+- Loads into PostgreSQL `raw` schema (lossless storage)
+
+**Transform (Task 2)**
+
+- dbt project: `medical_warehouse/`
+- `raw` → `staging` → `marts` (star schema)
+
+**Enrich (Task 3)**
+
+- Images → `src/yolo_detect.py` (YOLOv8)
+- Produces detection outputs (CSV and/or DB table)
+- dbt mart: `fct_image_detections`
+
+**Serve (Task 4)**
+
+- FastAPI service in `api/` reads curated marts and serves analytical endpoints
+
+**Orchestrate (Task 5)**
+
+- Dagster pipeline in `pipeline.py`
+- Daily schedule (cron) runs: scrape → load → dbt → yolo (→ optional API stays running separately)
+
+---
+
+## 2. Repository Structure
 
 ```
 Shipping-a-Data-Product
 ├─ api
+│  ├─ channels
+│  ├─ config.py
 │  ├─ database.py
+│  ├─ docs
 │  ├─ main.py
+│  ├─ queries.py
+│  ├─ reports
 │  ├─ schemas.py
+│  ├─ search
 │  └─ __init__.py
 ├─ channels.txt
 ├─ data
 │  ├─ processed
+│  │  └─ yolo
 │  ├─ README.md
 │  └─ sample
 │     ├─ images
@@ -71,220 +97,216 @@ Shipping-a-Data-Product
 │  │  ├─ marts
 │  │  │  ├─ dim_channels.sql
 │  │  │  ├─ dim_dates.sql
+│  │  │  ├─ fct_image_detections.sql
 │  │  │  ├─ fct_messages.sql
 │  │  │  └─ schema.yml
 │  │  └─ staging
 │  │     ├─ schema.yml
-│  │     └─ stg_telegram_messages.sql
+│  │     ├─ stg_telegram_messages.sql
+│  │     └─ stg_yolo_detections.sql
 │  ├─ package-lock.yml
 │  ├─ packages.yml
+│  ├─ seeds
+│  │  └─ yolo_detections.csv
 │  └─ tests
 │     ├─ assert_non_negative_views.sql
 │     └─ assert_no_future_messages.sql
 ├─ notebooks
 │  ├─ task02_data_modeling_and_transformation.ipynb
 │  ├─ task1_telegram_scraping.ipynb
+│  ├─ task3_YOLOv8_enrichment_evidence.ipynb
+│  ├─ yolov8n.pt
 │  └─ __init__.py
+├─ pipeline.py
 ├─ README.md
 ├─ requirements.txt
 ├─ src
 │  ├─ load_raw_to_postgres.py
 │  ├─ login_test.py
 │  ├─ scraper.py
+│  ├─ yolo_detect.py
 │  └─ __init__.py
-└─ tests
-   ├─ tests
-   └─ __init__.py
+├─ tests
+│  ├─ tests
+│  └─ __init__.py
+└─ yolov8n.pt
 
 ```
 
-> Note: Large raw data is not committed to git; a small sample may be provided under `data/sample/`.
+> Note: Large raw data is typically **not committed** to git; keep folder structure with `.gitkeep` or provide `data/sample/`.
 
 ---
 
-## Data Lake Layout
+## 3. Task 1 — Telegram Scraping & Raw Data Lake
 
-### Raw Telegram messages (partitioned by date)
+### Goal
 
-- data/raw/telegram_messages/YYYY-MM-DD/channel_name.json
+Scrape messages (and images when available) from selected Telegram channels and store them in a partitioned raw data lake.
 
-### Downloaded images
+### Implementation
 
-- data/raw/images/{channel_name}/{message_id}.jpg
+- Script: `src/scraper.py`
+- Channel list: `channels.txt` (or configured in code via `CHANNELS_FILE`)
+- Output:
+  - Messages: `data/raw/telegram_messages/YYYY-MM-DD/channel_name.json`
+  - Images: `data/raw/images/{channel_name}/{message_id}.jpg`
 
-### Required fields in the raw JSON
+### Raw Message Schema (minimum fields)
 
-Each scraped message record includes at least:
+Each record includes at least:
 
 - `message_id`
 - `channel_name`
 - `message_date`
 - `message_text`
 - `has_media`
-- `image_path`
+- `image_path` (relative or absolute path)
 - `views`
 - `forwards`
 
+### Notes (robustness)
+
+- Handles Telegram rate limiting (FloodWait) via sleep/retry
+- Logs progress/errors to `logs/`
+- Optional incremental resume via a state file (if enabled in your implementation)
+
 ---
 
-## Setup
+## 4. Task 2 — Load to PostgreSQL + dbt Modeling & Tests
 
-### 1) Create and activate a virtual environment
+### 4.1 Load Raw JSON to PostgreSQL (raw schema)
 
-**Windows (PowerShell)**
+- Script: `src/load_raw_to_postgres.py`
+- Input: `data/raw/telegram_messages/`
+- Output: PostgreSQL tables in a `raw` schema (commonly `raw.telegram_messages`)
 
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-docker compose up -d
+**Why JSONB/raw-first?**
 
-### Environment Variables
+- Preserves source fidelity for auditing/backfills
+- Enables schema-on-read and iterative modeling
 
-Create a .env file in the project root (do not commit it):
+### 4.2 dbt Project (Transformation)
 
-# Telegram
+- dbt project directory: `medical_warehouse/`
+- Layering:
+  - **staging**: cleanup/casting/standardized naming
+  - **marts**: analytics-ready star schema
 
-TELEGRAM_API_ID=<your_api_id>
-TELEGRAM_API_HASH=<your_api_hash>
-TELEGRAM_PHONE=<your_phone_or_blank_if_not_needed>
+#### Staging model(s)
 
-# Postgres
+- `stg_telegram_messages`
+  - casting and cleanup
+  - calculated fields such as `message_length`, `has_image`
 
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=<db_name>
-DB_USER=<db_user>
-DB_PASSWORD=<db_password>
+#### Mart models (Star Schema)
 
-# Optional
+- `dim_channels`
+  - `channel_key`, `channel_name`, optional metadata
+- `dim_dates`
+  - `date_key`, `full_date`, day/week/month/quarter/year attributes
+- `fct_messages`
+  - facts: views/forwards/text/image flags keyed to dimensions
 
-CHANNELS_FILE=channels.txt
+### 4.3 Data Quality (dbt tests)
 
-## How to Run (End-to-End)
+- Generic tests in:
+  - `medical_warehouse/models/staging/schema.yml`
+  - `medical_warehouse/models/marts/schema.yml`
+- Custom SQL tests in:
+  - `medical_warehouse/tests/`
+  - Examples:
+    - `assert_no_future_messages.sql`
+    - `assert_non_negative_views.sql`
 
-Step 1 — Scrape Telegram data (Extract)
-Bash
-copy
-python src/scraper.py
-Logs are written to:
+---
 
-logs/scraper.log
-logs/scrape_<date>.log (if enabled)
-Step 2 — Load raw JSON into Postgres (Load)
-Bash
-copy
-python src/load_raw_to_postgres.py
-This loads JSON partitions from data/raw/telegram_messages/ into the PostgreSQL raw schema.
+## 5. Task 3 — YOLOv8 Enrichment (Object Detection)
 
-Step 3 — Transform with dbt (Transform)
-Bash
-copy
-cd medical_warehouse
-dbt deps
-dbt build
-dbt test
-dbt docs generate
+### Goal
 
-### To view docs locally
+Enrich image data by detecting objects on downloaded Telegram images and publish results for analytics.
 
-Bash
-copy
-dbt docs serve --port 8081
-dbt Models
-Staging
-stg_telegram_messages
-casting and cleanup
-calculated fields (e.g., message_length, has_image)
+### Implementation
 
-### Marts (Star Schema)
+- Script: `src/yolo_detect.py`
+- Input images:
+  - `data/raw/images/{channel_name}/{message_id}.jpg`
+- Output:
+  - `data/processed/yolo/detections.csv` (recommended)
+  - (optional) load detections into PostgreSQL (e.g., `raw.image_detections`)
 
-dim_channels
-channel_key, channel_name, channel_type
-first_post_date, last_post_date
-total_posts, avg_views
-dim_dates
-date_key (YYYYMMDD), full_date, day_of_week, day_name
-week_of_year, month, quarter, year, is_weekend
-fct_messages
-message_id, channel_key, date_key
-message_text, message_length
-view_count, forward_count, has_image
+### Detection schema (recommended columns)
 
-### Data Quality (dbt Tests)
+- `image_path`
+- `channel_name`
+- `message_id`
+- `object_class`
+- `confidence`
+- bounding box: `x1`, `y1`, `x2`, `y2`
+- optional: `image_category` (e.g., `product_display` vs `other`)
+- `model_name` (e.g., `yolov8n`)
+- `detected_at` timestamp
 
-1) Generic tests
-Located in:
+### Analytics model (dbt)
 
-medical_warehouse/models/staging/schema.yml
-medical_warehouse/models/marts/schema.yml
-Includes checks like:
+- `medical_warehouse/models/marts/fct_image_detections.sql`
+  - fact table used by API endpoints (visual stats, product display rate, etc.)
 
-not_null, unique
-relationships (FK integrity from facts to dimensions)
-2) Custom tests
-Located in:
+---
 
-medical_warehouse/tests/ Examples:
-assert_no_future_messages.sql
-assert_non_negative_views.sql
+## 6. Task 4 — FastAPI Analytical API
 
-## Operational Notes (Logging, Retries, Resume)
+### Goal
 
-- Logging: Scraper writes logs to logs/ including channels processed, counts, and exceptions.
-- Rate limiting / FloodWait: Scraper handles Telegram rate limits by sleeping and continuing.
-- Retries: Network issues are handled via retry/backoff to avoid job failure.
-- Resume state: data/raw/scrape_state.json stores progress (last processed date/message) to support incremental scraping.
+Expose curated analytics via an API for downstream consumers.
 
-## API (Task 4 — Analytical FastAPI)
+### App location
 
-This project exposes curated analytics from the dbt marts (PostgreSQL) via a FastAPI service.
-
-### Requirements
-
-- PostgreSQL running and populated (raw loaded + dbt marts built)
-- Python dependencies installed (see `requirements.txt`)
-
-### Environment Variables (API)
-
-Set these before running the API:
-
-- `DATABASE_URL` — SQLAlchemy connection string  
-  Example:
-  `postgresql+psycopg2://postgres:<password>@localhost:5432/medical_warehouse`
-
-- `MART_SCHEMA` — schema containing dbt marts  
-  Example: `analytics_analytics`
+- `api/main.py` (FastAPI app)
+- `api/schemas.py` (Pydantic response models)
+- `api/database.py` (DB connection/session)
 
 ### Run the API
 
-bash
 uvicorn api.main:app --reload --port 8000
 
-### API Documentation
+## Task 5 — Pipeline Orchestration (Dagster)
 
-Swagger UI: <http://127.0.0.1:8000/docs>
-OpenAPI JSON: <http://127.0.0.1:8000/openapi.json>
+This project uses **Dagster** to orchestrate the full workflow end-to-end with observability and a **daily schedule**.
 
-### Example Requests
+### What Dagster Orchestrates
 
-Bash
+The Dagster job runs the pipeline in a dependency chain:
 
-- Health
-curl "<http://127.0.0.1:8000/health>"
-- Endpoint 1: Top Products
-curl "<http://127.0.0.1:8000/api/reports/top-products?limit=10>"
-- Endpoint 2: Channel Activity
-curl "<http://127.0.0.1:8000/api/channels/><channel_name>/activity?grain=day&days=30"
-- Endpoint 3: Message Search
-curl "<http://127.0.0.1:8000/api/search/messages?q=paracetamol&limit=20&offset=0>"
-- Endpoint 4: Visual Content Stats
-curl "<http://127.0.0.1:8000/api/reports/visual-content>"
+1. **Scrape** Telegram channels (Telethon) → writes raw JSON + images to the data lake  
+2. **Load** raw JSON → PostgreSQL `raw` schema  
+3. **Transform** with **dbt** → staging + marts (star schema)  
+4. **Enrich** images with **YOLOv8** → detections output (CSV and/or DB) and mart model updates
 
-### Screenshots are stored in docs/screenshots/
+### Where the Dagster Code Lives
 
-- task4_01_docs.png — Swagger UI landing page
-- task4_02_top_products.png — /api/reports/top-products?limit=10
-- task4_03_channel_activity.png — /api/channels/{channel_name}/activity
-- task4_04_message_search.png — /api/search/messages?q=paracetamol&limit=20
-- task4_05_visual_content.png — /api/reports/visual-content
-- task4_06_validation_422.png- /api/reports/validation
+- `pipeline.py`
+
+**Expected contents (rubric evidence):**
+
+- `@op` functions for each stage (scrape, load, dbt, yolo)
+- A `@job` that wires op dependencies (e.g., `scrape_op -> load_op -> dbt_op -> yolo_op`)
+- A daily schedule (cron), e.g. `0 2 * * *`
+- `Definitions(...)` registration so Dagster UI discovers the job + schedule:
+  - `defs = Definitions(jobs=[shipping_data_product_job], schedules=[daily_schedule])`
+
+> If the schedule does not show in Dagster UI, it is almost always because `Definitions(...)` is missing or not named `defs`.
+
+---
+
+### How to Run Dagster Locally
+
+#### 1) Start required services
+
+Make sure PostgreSQL is running:
+
+bash
+
+- docker compose up -d
+- dagster dev -f pipeline.py
+Open the Dagster UI: <http://127.0.0.1:3000>
