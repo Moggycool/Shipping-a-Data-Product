@@ -106,7 +106,7 @@ python-dotenv==1.2.1
 python-slugify==8.0.4
 pytimeparse==1.1.8
 pytz==2025.2
-pywin32==311
+pywin32==311; sys_platform == "win32"
 PyYAML==6.0.3
 pyzmq==27.1.0
 referencing==0.37.0
