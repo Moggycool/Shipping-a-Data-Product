@@ -234,3 +234,57 @@ assert_non_negative_views.sql
 - Rate limiting / FloodWait: Scraper handles Telegram rate limits by sleeping and continuing.
 - Retries: Network issues are handled via retry/backoff to avoid job failure.
 - Resume state: data/raw/scrape_state.json stores progress (last processed date/message) to support incremental scraping.
+
+## API (Task 4 — Analytical FastAPI)
+
+This project exposes curated analytics from the dbt marts (PostgreSQL) via a FastAPI service.
+
+### Requirements
+
+- PostgreSQL running and populated (raw loaded + dbt marts built)
+- Python dependencies installed (see `requirements.txt`)
+
+### Environment Variables (API)
+
+Set these before running the API:
+
+- `DATABASE_URL` — SQLAlchemy connection string  
+  Example:
+  `postgresql+psycopg2://postgres:<password>@localhost:5432/medical_warehouse`
+
+- `MART_SCHEMA` — schema containing dbt marts  
+  Example: `analytics_analytics`
+
+### Run the API
+
+bash
+uvicorn api.main:app --reload --port 8000
+
+### API Documentation
+
+Swagger UI: <http://127.0.0.1:8000/docs>
+OpenAPI JSON: <http://127.0.0.1:8000/openapi.json>
+
+### Example Requests
+
+Bash
+
+- Health
+curl "<http://127.0.0.1:8000/health>"
+- Endpoint 1: Top Products
+curl "<http://127.0.0.1:8000/api/reports/top-products?limit=10>"
+- Endpoint 2: Channel Activity
+curl "<http://127.0.0.1:8000/api/channels/><channel_name>/activity?grain=day&days=30"
+- Endpoint 3: Message Search
+curl "<http://127.0.0.1:8000/api/search/messages?q=paracetamol&limit=20&offset=0>"
+- Endpoint 4: Visual Content Stats
+curl "<http://127.0.0.1:8000/api/reports/visual-content>"
+
+### Screenshots are stored in docs/screenshots/
+
+- task4_01_docs.png — Swagger UI landing page
+- task4_02_top_products.png — /api/reports/top-products?limit=10
+- task4_03_channel_activity.png — /api/channels/{channel_name}/activity
+- task4_04_message_search.png — /api/search/messages?q=paracetamol&limit=20
+- task4_05_visual_content.png — /api/reports/visual-content
+- task4_06_validation_422.png- /api/reports/validation
