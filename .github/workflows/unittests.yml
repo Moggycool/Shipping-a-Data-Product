@@ -36,6 +36,10 @@ jobs:
             - name: Run tests
               env:
                   PYTHONPATH: .
+                  TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+                  # Add other required secrets below as needed, for example:
+                  # TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+                  # TELEGRAM_PHONE: ${{ secrets.TELEGRAM_PHONE }}
               run: |
                   pytest -q --tb=short
 
