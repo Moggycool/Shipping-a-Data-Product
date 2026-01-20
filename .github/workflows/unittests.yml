@@ -3,117 +3,117 @@ name: CI
 on: [push, pull_request]
 
 concurrency:
-    group: ci-${{ github.ref }}
-    cancel-in-progress: true
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-    unittests:
-        name: Unit tests + API import checks
-        runs-on: windows-latest
+  unittests:
+    name: Unit tests + API import checks
+    runs-on: windows-latest
 
-        steps:
-            - uses: actions/checkout@v4
+    steps:
+      - uses: actions/checkout@v4
 
-            - name: Set up Python
-              uses: actions/setup-python@v5
-              with:
-                  python-version: "3.11"
-                  cache: "pip"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
 
-            - name: Install dependencies
-              run: |
-                  python -m pip install --upgrade pip
-                  if (Test-Path requirements.txt) { pip install -r requirements.txt }
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if (Test-Path requirements.txt) { pip install -r requirements.txt }
 
-            - name: Basic API import checks
-              env:
-                  PYTHONPATH: .
-              run: |
-                  python -c "import sys; print(sys.version)"
-                  python -c "import api"
-                  python -c "from api.main import app"
+      - name: Basic API import checks
+        env:
+          PYTHONPATH: .
+        run: |
+          python -c "import sys; print(sys.version)"
+          python -c "import api"
+          python -c "from api.main import app"
 
-            - name: Run tests
-              env:
-                  PYTHONPATH: .
-                  TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
-                  # Add other required secrets below as needed, for example:
-                  # TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
-                  # TELEGRAM_PHONE: ${{ secrets.TELEGRAM_PHONE }}
-              run: |
-                  pytest -q --tb=short
+      - name: Run tests
+        env:
+          PYTHONPATH: .
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_SESSION_NAME: ${{ secrets.TELEGRAM_SESSION_NAME }}
 
-    dbt:
-        name: dbt compile/build/test
-        runs-on: ubuntu-latest
+        run: |
+          pytest -q --tb=short
 
-        services:
-            postgres:
-                image: postgres:15
-                env:
-                    POSTGRES_USER: postgres
-                    POSTGRES_PASSWORD: postgres
-                    POSTGRES_DB: medical_warehouse
-                ports:
-                    - 5432:5432
-                options: >-
-                    --health-cmd="pg_isready -U postgres"
-                    --health-interval=10s
-                    --health-timeout=5s
-                    --health-retries=5
+  dbt:
+    name: dbt compile/build/test
+    runs-on: ubuntu-latest
 
-        steps:
-            - uses: actions/checkout@v4
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: medical_warehouse
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
-            - name: Set up Python
-              uses: actions/setup-python@v5
-              with:
-                  python-version: "3.11"
-                  cache: "pip"
+    steps:
+      - uses: actions/checkout@v4
 
-            - name: Install dependencies (incl. dbt)
-              run: |
-                  python -m pip install --upgrade pip
-                  if (Test-Path requirements.txt) { pip install -r requirements.txt }
-                  pip show dbt-core || pip install dbt-core dbt-postgres
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
 
-            - name: Create dbt profiles.yml (CI)
-              run: |
-                  mkdir -p ~/.dbt
-                  cat > ~/.dbt/profiles.yml << 'YAML'
-                  medical_warehouse:
-                    target: ci
-                    outputs:
-                      ci:
-                        type: postgres
-                        host: 127.0.0.1
-                        user: postgres
-                        password: postgres
-                        port: 5432
-                        dbname: medical_warehouse
-                        schema: public
-                        threads: 4
-                  YAML
+      - name: Install dependencies (incl. dbt)
+        run: |
+          python -m pip install --upgrade pip
+          if (Test-Path requirements.txt) { pip install -r requirements.txt }
+          pip show dbt-core || pip install dbt-core dbt-postgres
 
-            - name: dbt deps
-              working-directory: medical_warehouse
-              run: dbt deps
+      - name: Create dbt profiles.yml (CI)
+        run: |
+          mkdir -p ~/.dbt
+          cat > ~/.dbt/profiles.yml << 'YAML'
+          medical_warehouse:
+            target: ci
+            outputs:
+              ci:
+                type: postgres
+                host: 127.0.0.1
+                user: postgres
+                password: postgres
+                port: 5432
+                dbname: medical_warehouse
+                schema: public
+                threads: 4
+          YAML
 
-            - name: dbt debug
-              working-directory: medical_warehouse
-              run: dbt debug --target ci
+      - name: dbt deps
+        working-directory: medical_warehouse
+        run: dbt deps
 
-            - name: dbt compile
-              working-directory: medical_warehouse
-              run: dbt compile --target ci
+      - name: dbt debug
+        working-directory: medical_warehouse
+        run: dbt debug --target ci
 
-            # NOTE: build/test require your raw/source tables (or seeds) to exist in CI.
-            # If CI fails here due to missing sources, switch to `dbt build --select ...`
-            # or add seeds/fixtures for CI.
-            - name: dbt build
-              working-directory: medical_warehouse
-              run: dbt build --target ci
+      - name: dbt compile
+        working-directory: medical_warehouse
+        run: dbt compile --target ci
 
-            - name: dbt test
-              working-directory: medical_warehouse
-              run: dbt test --target ci
+      # NOTE: build/test require your raw/source tables (or seeds) to exist in CI.
+      # If CI fails here due to missing sources, switch to `dbt build --select ...`
+      # or add seeds/fixtures for CI.
+      - name: dbt build
+        working-directory: medical_warehouse
+        run: dbt build --target ci
+
+      - name: dbt test
+        working-directory: medical_warehouse
+        run: dbt test --target ci
